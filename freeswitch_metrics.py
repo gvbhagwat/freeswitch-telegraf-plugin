@@ -16,14 +16,15 @@ Usage:
 
 from xmlrpclib import ServerProxy
 from datetime import datetime
+from collections import Counter
 import re
 import os
 
-# Connectiong settings for FreeSWITCH XML RPC
+# Connection settings for FreeSWITCH XML RPC
 FS_HOST = os.getenv('FS_HOST', 'localhost')
 FS_PORT = os.getenv('FS_PORT', 8080)
 FS_USERNAME = os.getenv('FS_USERNAME', 'freeswitch')
-FS_PASSWORD = os.getenv('FS_PASSWORD', 'works')
+FS_PASSWORD = os.getenv('FS_PASSWORD', 'metrofs75')
 
 DEMO_MODE = False
 
@@ -33,19 +34,26 @@ server = ServerProxy("http://%s:%s@%s:%s" % (FS_USERNAME,
                                              FS_PORT))
 
 
-def get_calls():
+def get_calls_per_company():
     """
-    Connect to FreeSWITCH server and get calls count
+    Connect to FreeSWITCH server and get calls
 
-    fs_cli -x "show channels count"
-
-    0 total.
     """
-    calls = server.freeswitch.api("show", "calls count")
-    num_calls = r'\n(?P<chans>\d+) total\.\n'
-    regexp = re.compile(num_calls)
-    matches = regexp.search(calls)
-    return int(matches.group("chans"))
+
+    calls = server.freeswitch.api("show", "calls")
+    # print(calls)
+    response_rows = calls.split('\n')
+    uuids = filter(lambda x: len(x) == 36, (map(lambda x: x.split(',')[0], response_rows[1:])))
+    company_ids = map(lambda x: server.freeswitch.api("uuid_getvar ", x + " company_id"), uuids)
+    total_calls = sum(company_ids)
+    calls_per_company_dict = dict(Counter(company_ids))
+
+    return_dict = {"activeCalls.total": total_calls}
+
+    for key in calls_per_company_dict.keys():
+        return_dict["activeCalls." + key] = calls_per_company_dict[key]
+
+    return return_dict
 
 
 def get_channels_cps():
@@ -76,15 +84,16 @@ def get_channels_cps():
     return (sessions, cps)
 
 
-def print_statics():
+def print_statistics():
     try:
-        n_calls = get_calls()
+        collected_stats = get_calls_per_company()
         (sessions, cps) = get_channels_cps()
+        collected_stats["activeSessions.totalSessions"] = sessions
+        collected_stats["activeCps"] = cps
     except:
-        n_calls = 0
-        sessions = 0
-        cps = 0
-    print("{\"active_channels\": %d, \"active_calls\": %d, \"cps\": %d}" % (sessions, n_calls, cps))
+        print("{\"activeSessions.totalSessions\": 0, \"activeCalls.totalCalls\": 0, \"cps\": 0}")
+
+    print str(collected_stats)
 
 
 if __name__ == "__main__":
@@ -95,4 +104,4 @@ if __name__ == "__main__":
         cps = dt.second
         print("{\"active_channels\": %d, \"active_calls\": %d, \"cps\": %d}" % (sessions, n_calls, cps))
     else:
-        print_statics()
+        print_statistics()
