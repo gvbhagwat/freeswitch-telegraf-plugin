@@ -17,8 +17,10 @@ Usage:
 from xmlrpclib import ServerProxy
 from datetime import datetime
 from collections import Counter
+import json
 import re
 import os
+import sys
 
 # Connection settings for FreeSWITCH XML RPC
 FS_HOST = os.getenv('FS_HOST', 'localhost')
@@ -41,18 +43,11 @@ def get_calls_per_company():
     """
 
     calls = server.freeswitch.api("show", "calls")
-    # print(calls)
     response_rows = calls.split('\n')
     uuids = filter(lambda x: len(x) == 36, (map(lambda x: x.split(',')[0], response_rows[1:])))
     company_ids = map(lambda x: server.freeswitch.api("uuid_getvar ", x + " company_id"), uuids)
-    total_calls = sum(company_ids)
     calls_per_company_dict = dict(Counter(company_ids))
-
-    return_dict = {"activeCalls.total": total_calls}
-
-    for key in calls_per_company_dict.keys():
-        return_dict["activeCalls." + key] = calls_per_company_dict[key]
-
+    return_dict = {"activeCalls": calls_per_company_dict}
     return return_dict
 
 
@@ -88,12 +83,11 @@ def print_statistics():
     try:
         collected_stats = get_calls_per_company()
         (sessions, cps) = get_channels_cps()
-        collected_stats["activeSessions.totalSessions"] = sessions
+        collected_stats["activeSessions"] = sessions
         collected_stats["activeCps"] = cps
+        print json.dumps(collected_stats)
     except:
-        print("{\"activeSessions.totalSessions\": 0, \"activeCalls.totalCalls\": 0, \"cps\": 0}")
-
-    print str(collected_stats)
+        print("{\"activeSessions\": 0, \"activeCalls\": 0, \"activeCps\": 0}")
 
 
 if __name__ == "__main__":
